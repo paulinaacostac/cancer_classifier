@@ -70,21 +70,17 @@ def count_spectra_in_range(intersect_range,mgf_file):
     is_mw = False
 
     counter = 0
-    pointers = []
     # cancer files are partially sorted
     while i < len(lines):
         line = lines[i]
         i += 1
-        if line.startswith('BEGIN IONS'):
-            start = i
         if line.startswith('PEPMASS'):
             mass = float(re.findall(r"PEPMASS=([-+]?[0-9]*\.?[0-9]*)", line)[0])
             if mass >= intersect_range[0] and mass <= intersect_range[1]: 
                 counter += 1
-                pointers.append(start)
 
     #print("len pointers: ",len(pointers), " counter: ",counter)
-    return [counter,pointers]
+    return counter
 
 def find_overlapping_range(mgf_files):
     ranges = []
@@ -103,15 +99,13 @@ def spectra_in_range_per_file(intersect_range,mgf_files):
     counter = 0
     min_spectra = float("inf")
     max_spectra = -1
-    files_pointers = []
     for mgf_file in mgf_files:
-        count_spectra_file, pointers = count_spectra_in_range(intersect_range,mgf_file)
-        files_pointers.append(pointers)
+        count_spectra_file = count_spectra_in_range(intersect_range,mgf_file)
         counter += count_spectra_file
         min_spectra = min(count_spectra_file,min_spectra)
         max_spectra = max(count_spectra_file,max_spectra)
         print("file: "+mgf_file.split("/")[-1]+"    |    spectra_count: "+str(count_spectra_file))
-    return [counter, files_pointers, max_spectra, min_spectra]
+    return [counter, max_spectra, min_spectra]
 
 def write_new_mgf_file(mgf_out,pointers,min_spectra,mgf_file):
     f = open(mgf_file,"r")
@@ -134,9 +128,29 @@ def write_new_mgf_file(mgf_out,pointers,min_spectra,mgf_file):
         f.write('\n')
     f.close()
 
-def write_new_mgfs(mgf_out,files_pointers,min_spectra,mgf_files):     
-    assert len(files_pointers) == len(mgf_files)
-    for mgf_file,pointers in zip(mgf_files,files_pointers):
+def generate_pointers(mgf_file,intersect_range):
+    #print('Reading: {}'.format(mgf_file))
+    f = open(mgf_file, "r")
+    lines = f.readlines()
+    f.close()
+
+    pointers = []
+    # cancer files are partially sorted
+    while i < len(lines):
+        line = lines[i]
+        i += 1
+        if line.startswith('BEGIN IONS'):
+            start = i
+        if line.startswith('PEPMASS'):
+            mass = float(re.findall(r"PEPMASS=([-+]?[0-9]*\.?[0-9]*)", line)[0])
+            if mass >= intersect_range[0] and mass <= intersect_range[1]:  
+                pointers.append(start)
+    print("file {}       |       len pointers within range: {}".format(mgf_file.split("/")[-1],len(pointers)))
+    return pointers
+
+def write_new_mgfs(mgf_out,min_spectra,mgf_files,intersect_range):     
+    for mgf_file in mgf_files:
+        pointers = generate_pointers(mgf_file,intersect_range)
         write_new_mgf_file(mgf_out,pointers,min_spectra,mgf_file)
 
 
@@ -172,9 +186,11 @@ if __name__ == '__main__':
     # min_spectra will become the num of spectra per mgf file we will use
     # within that intersect_range, lets choose as many spectra as min_spectra is but distributed randomly in that range
 
-    counter,files_pointers,_,min_spectra = spectra_in_range_per_file(intersect_range,mgf_files)
+    counter,_,min_spectra = spectra_in_range_per_file(intersect_range,mgf_files)
     print("min_spectra: ",min_spectra)
     f = open(join(mgf_out,"min_spectra.txt"),"w")
     f.write(str(min_spectra))
     f.close()
-    write_new_mgfs(mgf_out,files_pointers,min_spectra,mgf_files) #add num files
+
+
+    write_new_mgfs(mgf_out,min_spectra,mgf_files,intersect_range) #add num files
