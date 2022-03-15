@@ -12,6 +12,10 @@ import config
 
 # Run with labeled mgf files pls (that have SEQ=)
 
+summ = np.zeros(spec_size)
+sq_sum = np.zeros(spec_size)
+N = 0
+
 
 def create_out_dir(dir_path, exist_ok=True):
     out_path = Path(dir_path)
@@ -90,9 +94,7 @@ def preprocess_mgfs(mgf_dir, out_dir,cancer,mgf_file):
     
     pep_spec = []
     
-    summ = np.zeros(spec_size)
-    sq_sum = np.zeros(spec_size)
-    N = 0
+    
     spec_out = []
     len_out = []
     
@@ -234,7 +236,7 @@ def preprocess_mgfs(mgf_dir, out_dir,cancer,mgf_file):
     #print(spec_out)
     print('max moz: ' + str(max_moz))
     
-    with open(join(out_dir, mgf_file+'.pkl'), 'wb') as f:
+    with open(join(out_dir, mgf_file.split("/")[-1].split(".")[0]+'.pkl'), 'wb') as f:
         pickle.dump(spec_out, f)
     # train_val_spec_out, test_spec_out = train_test_split(spec_out, test_size=0.1, random_state=37, shuffle=True)
     # train_spec_out, val_spec_out = train_test_split(train_val_spec_out, test_size=0.2, random_state=79, shuffle=True)
@@ -253,16 +255,6 @@ def preprocess_mgfs(mgf_dir, out_dir,cancer,mgf_file):
     print("Modified:\t{}".format(modified))
     print("Unmodified:\t{}".format(unmodified))
     print("Unique Peptides:\t{}".format(len(unique_pep_set)))
-    print("Sum: {}".format(summ))
-    print("Sum-Squared: {}".format(sq_sum))
-    print("N: {}".format(N))
-    means = summ / N
-    print("mean: {}".format(means))
-    stds = np.sqrt((sq_sum / N) - means**2)
-    stds[stds < 0.0000001] = float("inf")
-    print("std: {}".format(stds))
-    np.save(join(out_dir, 'means.npy'), means)
-    np.save(join(out_dir, 'stds.npy'), stds)
     
 def preprocess_mgfs_unlabelled(mgf_dir, out_dir):
     
@@ -425,21 +417,41 @@ def preprocess_mgfs_unlabelled(mgf_dir, out_dir):
     stds = np.sqrt((sq_sum / N) - means**2)
     stds[stds < 0.0000001] = float("inf")
     print("std: {}".format(stds))
-    np.save(join(out_dir, 'means.npy'), means)
-    np.save(join(out_dir, 'stds.npy'), stds)
+    #np.save(join(out_dir, 'means.npy'), means)
+    #np.save(join(out_dir, 'stds.npy'), stds)
 
 if __name__ == '__main__':
+    dirs = config.get_config(section='input', key='dirs')
     mgf_dir = config.get_config(section='input', key='mgf_dir')
-    prep_dir = config.get_config(section='input', key='prep_dir')
+    out_dir = config.get_config(section='input', key='out_dir')
 
-    mgf_files = verify_in_dir(mgf_dir, "gz", [])
+    mgf_files = []
+    for directory in dirs:
+        mgf_files.extend(verify_in_dir(mgf_dir+directory, "gz", []))
     create_out_dir(out_dir, exist_ok=False)
     
     ####################### LOOK OUT FOR THIS ###################################
-    mgf_files = mgf_files[:3]
-    cancer_label = 1
+    mgf_files = mgf_files[:3] #for test only
 
 
     print('reading {} files'.format(len(mgf_files)))
+
     for mgf_file in mgf_files:
-        preprocess_mgfs(mgf_dir, prep_dir, cancer_label, mgf_file)
+        cancer_label = 0
+        folder = "healthy-pkl-files/"
+        directory = mgf_file.split("/")[-2]
+        if directory = "cancer-mgfs": 
+            cancer_label = 1
+            folder = "cancer-pkl-files/"
+        preprocess_mgfs(mgf_dir, out_dir+folder, cancer_label, mgf_file)
+
+    print("Sum: {}".format(summ))
+    print("Sum-Squared: {}".format(sq_sum))
+    print("N: {}".format(N))
+    #means = summ / N
+    print("mean: {}".format(means))
+    #stds = np.sqrt((sq_sum / N) - means**2)
+    #stds[stds < 0.0000001] = float("inf")
+    print("std: {}".format(stds))
+    np.save(join(out_dir, 'means.npy'), means)
+    np.save(join(out_dir, 'stds.npy'), stds)
