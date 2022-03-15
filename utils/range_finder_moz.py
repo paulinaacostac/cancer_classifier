@@ -9,7 +9,8 @@ import math
 import pickle
 import numpy as np
 import random
-
+import time
+from multiprocessing import Process
 
 
 def isfloat(str_float):
@@ -99,15 +100,17 @@ def spectra_in_range_per_file(intersect_range,mgf_files):
     counter = 0
     min_spectra = float("inf")
     max_spectra = -1
-    for mgf_file in mgf_files:
+    for i,mgf_file in enumerate(mgf_files):
+        t0 = time.time()
         count_spectra_file = count_spectra_in_range(intersect_range,mgf_file)
         counter += count_spectra_file
         min_spectra = min(count_spectra_file,min_spectra)
         max_spectra = max(count_spectra_file,max_spectra)
-        print("file: "+mgf_file.split("/")[-1]+"    |    spectra_count: "+str(count_spectra_file))
+        print("file: "+mgf_file.split("/")[-1]+"    |    spectra_count: "+str(count_spectra_file)+"    |    progress: "+str(i)+"/"+str(len(mgf_files)+" ("+str(round(i//len(mgf_files),2))+")"+"     |    time: "+str(round(time.time()-t0,2))))
     return [counter, max_spectra, min_spectra]
 
 def write_new_mgf_file(mgf_out,pointers,min_spectra,mgf_file):
+
     f = open(mgf_file,"r")
     lines = f.readlines()
     f.close()
@@ -130,6 +133,8 @@ def write_new_mgf_file(mgf_out,pointers,min_spectra,mgf_file):
 
 def generate_pointers(mgf_file,intersect_range):
     #print('Reading: {}'.format(mgf_file))
+    pointers = generate_pointers(mgf_file,intersect_range)
+
     f = open(mgf_file, "r")
     lines = f.readlines()
     f.close()
@@ -145,26 +150,27 @@ def generate_pointers(mgf_file,intersect_range):
             mass = float(re.findall(r"PEPMASS=([-+]?[0-9]*\.?[0-9]*)", line)[0])
             if mass >= intersect_range[0] and mass <= intersect_range[1]:  
                 pointers.append(start)
-    print("file {}       |       len pointers within range: {}".format(mgf_file.split("/")[-1],len(pointers)))
+    
     return pointers
 
 def write_new_mgfs(mgf_out,min_spectra,mgf_files,intersect_range):     
     for mgf_file in mgf_files:
-        pointers = generate_pointers(mgf_file,intersect_range)
-        write_new_mgf_file(mgf_out,pointers,min_spectra,mgf_file)
-
+        t0 = time.time()
+        p = Process(target=write_new_mgf_file, args=(mgf_out,pointers,min_spectra,intersect_range,mgf_file))
+        p.start()
+        p.join()
+        #print("file {}       |       len pointers within range: {}       |       progress: {}/{} ({})    |    time: {}".format(mgf_file.split("/")[-1],len(pointers),i,len(mgf_files),round(i/len(mgf_files),2),round(time.time()-t0,2)))
 
 #20111225_EXQ5_KiSh_SA_LabelFree_HeLa_Phospho_Control_rep4_FT3.raw
 
 if __name__ == '__main__':
-
+    t0 = time.time()
     #mgf_dir = config.get_config(section='input', key='mgf_dir')
     dirs = ["healthy-mgfs/","cancer-mgfs/"]
     mgf_dir = "/blue/fsaeed/paulinaacostacev/data/cancer_proj_data/"
     mgf_out = "/blue/fsaeed/paulinaacostacev/data/cancer_proj_data/"
     #prep_dir = config.get_config(section='input', key='prep_dir')
 
-    
     mgf_files = []
     for directory in dirs:
         mgf_files.extend(verify_in_dir(mgf_dir+directory, "mgf", []))
@@ -175,14 +181,14 @@ if __name__ == '__main__':
 
     print('reading {} files'.format(len(mgf_files)))
     
-    intersect_range = None #[500.278289794922, 1346.155029296875] # or None if we dont know the range. Calculated 3/11/2022
+    intersect_range = [500.278289794922, 1346.155029296875] # or None if we dont know the range. Calculated 3/11/2022
     if not intersect_range:
         intersect_range = find_overlapping_range(mgf_files)
     print(intersect_range)
 
-    f = open(join(mgf_out,"range.txt"),"w")
-    f.write(str(intersect_range))
-    f.close()
+    #f = open(join(mgf_out,"range.txt"),"w")
+    #f.write(str(intersect_range))
+    #f.close()
     # min_spectra will become the num of spectra per mgf file we will use
     # within that intersect_range, lets choose as many spectra as min_spectra is but distributed randomly in that range
 
@@ -192,5 +198,5 @@ if __name__ == '__main__':
     f.write(str(min_spectra))
     f.close()
 
-
     write_new_mgfs(mgf_out,min_spectra,mgf_files,intersect_range) #add num files
+    print("total time {}".format(round(time.time()-t0,2)))
