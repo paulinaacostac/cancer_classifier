@@ -195,7 +195,6 @@ def get_mgffiles(dirs,mgf_dir):
     return mgf_files
 
 if __name__ == '__main__':
-
     t0 = time.time()
     dirs = ["healthy-mgfs/","cancer-mgfs/"]
     mgf_dir = "/blue/fsaeed/paulinaacostacev/data/cancer_proj_data/"
