@@ -68,7 +68,9 @@ def find_overlapping_range(mgf_files):
     
     return [start,end]
 # valid spectra when withing intersect_range, charge <= 4 and num of peaks > 15
-def count_valid_spectra(intersect_range,mgf_file):
+# mode-> True: returns count ; False: returns pointers
+def get_valid_spectra(intersect_range,mgf_file,mode):
+    print('Generating pointers for: {}'.format(mgf_file)) if not mode else print('Counting: {}'.format(mgf_file))
     #print('Reading: {}'.format(mgf_file))
     f = open(mgf_file, "r")
     lines = f.readlines()
@@ -76,6 +78,8 @@ def count_valid_spectra(intersect_range,mgf_file):
     i = 0
     is_mw = False
 
+    real_counter = 0
+    pointers = []
     counter = 0
     compliant_mass = compliant_charge = False
     # cancer files are partially sorted
@@ -84,7 +88,8 @@ def count_valid_spectra(intersect_range,mgf_file):
         i += 1
         num_peaks = 0
         if line.startswith('BEGIN IONS'):
-            start = i
+            start = i-1 #the pointer moved to the next line already.
+            real_counter +=1
         if line.startswith('PEPMASS'):
             mass = float(re.findall(r"PEPMASS=([-+]?[0-9]*\.?[0-9]*)", line)[0])
             if mass >= intersect_range[0] and mass <= intersect_range[1]:  
@@ -100,23 +105,31 @@ def count_valid_spectra(intersect_range,mgf_file):
                 num_peaks += 1
                 i+=1
         if compliant_mass and compliant_charge and num_peaks > 15:
-            counter += 1
+            if mode:
+                counter += 1
+            else:
+                pointers.append(start)
             compliant_mass = compliant_charge = False
-    return counter
-def count_valid_spectra_folder(intersect_range,mgf_files):
+    if mode: 
+        print("real counter {}".format(real_counter))
+        return counter
+    return pointers
+def get_valid_spectra_folder(intersect_range,mgf_files):
     counter = 0
     min_spectra = float("inf")
     max_spectra = -1
     for i,mgf_file in enumerate(mgf_files):
         t0 = time.time()
-        count_spectra_file = count_valid_spectra(intersect_range,mgf_file)
+        count_spectra_file = get_valid_spectra(intersect_range,mgf_file,True)
         counter += count_spectra_file
         min_spectra = min(count_spectra_file,min_spectra)
         max_spectra = max(count_spectra_file,max_spectra)
         print("file: {}    |    spectra_count: {}    |    progress: {}/{} ({})".format(str(mgf_file.split("/")[-1]),str(count_spectra_file),str(i), str(len(mgf_files)),str(round(i/len(mgf_files),2))))
     return [counter, max_spectra, min_spectra]
 def write_new_mgf_file(mgf_out,min_spectra,intersect_range,mgf_file):
-    pointers = generate_pointers(mgf_file,intersect_range)
+    #pointers = generate_pointers(mgf_file,intersect_range)
+    pointers = get_valid_spectra(intersect_range,mgf_file,False)
+    print("num valid spectra: {}".format(len(pointers)))
 
     f = open(mgf_file,"r")
     lines = f.readlines()
@@ -128,25 +141,27 @@ def write_new_mgf_file(mgf_out,min_spectra,intersect_range,mgf_file):
     f = open(new_filename,"w")
     print('Writing: {}'.format(new_filename.split("/")[-1]))
 
-    
-    pointers = random.sample(pointers,min_spectra)
-    #print("len pointers: {} == min spectra: {}".format(len(pointers),min_spectra))
-    for p in pointers:
-        i = p
-        while not lines[i].startswith('END IONS'):
-            f.write(lines[i])
-            i+=1
-        f.write(lines[i])
+    random_pointers = random.sample(pointers,min_spectra)
+    print("len random pointers: {} == min spectra: {}".format(len(random_pointers),min_spectra))
+    for p in random_pointers:
+        line_pointer = p
+        while not lines[line_pointer].startswith('END IONS'):
+            f.write(lines[line_pointer])
+            line_pointer += 1
+        f.write(lines[line_pointer])
         f.write('\n')
     f.close()
 
     print("verifying file {}".format(new_filename))
-    real_count = count_valid_spectra(intersect_range,new_filename)
+    real_count = get_valid_spectra(intersect_range,new_filename,True)
+    print("real count: {} expected count: {}".format(real_count,min_spectra))
     if real_count == min_spectra: 
         print("file {} verified".format(new_filename))
     else: 
         print("file {} not valid".format(new_filename))
         exit()
+
+ #weird func       
 def generate_pointers(mgf_file,intersect_range):
     print('Generating pointers for: {}'.format(mgf_file))
     f = open(mgf_file, "r")
@@ -162,7 +177,7 @@ def generate_pointers(mgf_file,intersect_range):
         i += 1
         num_peaks = 0
         if line.startswith('BEGIN IONS'):
-            start = i
+            start = i-1 #the pointer moved to the next line already.
         if line.startswith('PEPMASS'):
             mass = float(re.findall(r"PEPMASS=([-+]?[0-9]*\.?[0-9]*)", line)[0])
             if mass >= intersect_range[0] and mass <= intersect_range[1]:  
@@ -183,7 +198,7 @@ def generate_pointers(mgf_file,intersect_range):
             compliant_mass = compliant_charge = False
     return pointers
 def write_new_mgfs(mgf_out,min_spectra,mgf_files,intersect_range):     
-    for i,mgf_file in enumerate(mgf_files):
+    for mgf_file in mgf_files:
         write_new_mgf_file(mgf_out,min_spectra,intersect_range,mgf_file)
         #p = Process(target=write_new_mgf_file, args=(mgf_out,min_spectra,intersect_range,mgf_file))
         #p.start()
@@ -197,32 +212,32 @@ def get_mgffiles(dirs,mgf_dir):
 if __name__ == '__main__':
     t0 = time.time()
     dirs = ["healthy-mgfs/","cancer-mgfs/"]
-    mgf_dir = "/blue/fsaeed/paulinaacostacev/data/cancer_proj_data/"
-    mgf_out = "/blue/fsaeed/paulinaacostacev/data/cancer_proj_data/"
+    mgf_dir = "/disk/raptor-2/pacos021/data/"
+    mgf_out = "/disk/raptor-2/pacos021/data/"
     #create_out_dir(mgf_out, exist_ok=False)
     mgf_files = get_mgffiles(dirs,mgf_dir)
-    
+
     #TEST
     #mgf_files = [mgf_files[270],mgf_files[271],mgf_files[272]]
 
     print('reading {} files'.format(len(mgf_files)))
     intersect_range = [500.278289794922, 1346.155029296875] #[500.278289794922, 1346.155029296875] #[500.278289794922, 1346.155029296875] # or None if we dont know the range. Calculated 3/11/2022
-    # if not intersect_range:
-    #     intersect_range = find_overlapping_range(mgf_files)
-    #     f = open(join(mgf_out,"range.txt"),"w")
-    #     f.write(str(intersect_range))
-    #     f.close()
-    # print(intersect_range)
+    if not intersect_range:
+        intersect_range = find_overlapping_range(mgf_files)
+        f = open(join(mgf_out,"range.txt"),"w")
+        f.write(str(intersect_range))
+        f.close()
+    print(intersect_range)
 
     #min_spectra will become the num of spectra per mgf file we will use
     #within that intersect_range, lets choose as many spectra as min_spectra is but distributed randomly in that range
     min_spectra = 5587 #None  # or None if we dont know the min espectra. Calculated 3/23/2022
-    # if not min_spectra:
-    #     counter,_,min_spectra = count_valid_spectra_folder(intersect_range,mgf_files)
-    #     f = open(join(mgf_out,"min_spectra.txt"),"w")
-    #     f.write(str(min_spectra))
-    #     f.close()
-    # print("min_spectra: ",min_spectra)
+    if not min_spectra:
+        counter,_,min_spectra = get_valid_spectra_folder(intersect_range,mgf_files)
+        f = open(join(mgf_out,"min_spectra.txt"),"w")
+        f.write(str(min_spectra))
+        f.close()
+    print("min_spectra: ",min_spectra)
         
     write_new_mgfs(mgf_out,min_spectra,mgf_files,intersect_range) #add num files
     print("total time {}".format(round(time.time()-t0,2)))
@@ -230,9 +245,8 @@ if __name__ == '__main__':
     # to verify
     print("verifying")
     dirs = ["healthy-mgfs-compact/","cancer-mgfs-compact/"]
-    mgf_dir = "/blue/fsaeed/paulinaacostacev/data/cancer_proj_data/"
     mgf_files = get_mgffiles(dirs,mgf_dir)
-    counter,max_spectra,min_spectra = count_valid_spectra_folder(intersect_range,mgf_files)
+    counter,max_spectra,min_spectra = get_valid_spectra_folder(intersect_range,mgf_files)
     print("total num_spectra: {} | max_spectra: {} | min_spectra: {} | total num_files: {}".format(counter,max_spectra,min_spectra,len(mgf_files)))
 
     # get pepmass distribution for each file
