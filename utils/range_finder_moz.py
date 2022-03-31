@@ -91,28 +91,40 @@ def get_valid_spectra(intersect_range,mgf_file,mode):
             start = i-1 #the pointer moved to the next line already.
             real_counter +=1
         if line.startswith('PEPMASS'):
-            mass = float(re.findall(r"PEPMASS=([-+]?[0-9]*\.?[0-9]*)", line)[0])
-            if mass >= intersect_range[0] and mass <= intersect_range[1]:  
+            mass = round(float(re.findall(r"PEPMASS=([-+]?[0-9]*\.?[0-9]*)", line)[0])*1000)
+            if mass > intersect_range[0] and mass < intersect_range[1]:  
                 compliant_mass = True
-            else: compliant_mass = False
+            else: 
+                if mode: print("mass {} not valid".format(mass))
+                compliant_mass = False
+                continue
         if compliant_mass and line.startswith('CHARGE'):
             l_charge = int(re.findall(r"CHARGE=([-+]?[0-9]*\.?[0-9]*)", line)[0])
             if l_charge <= 4:
                 compliant_charge = True
-            else: compliant_charge = False
+            else:
+                if mode: print("charge {} not valid".format(l_charge))
+                compliant_charge = compliant_mass = False
+                continue
         if compliant_mass and compliant_charge:
             while i < len(lines) and 'END IONS' not in lines[i].upper():
-                num_peaks += 1
+                if isfloat(re.split(' |\t|=', lines[i])[0]): num_peaks += 1
                 i+=1
+                
         if compliant_mass and compliant_charge and num_peaks > 15:
-            if mode:
-                counter += 1
-            else:
-                pointers.append(start)
+            #if mode:
+            #    counter += 1
+            #else:
+            pointers.append(start)
             compliant_mass = compliant_charge = False
+            num_peaks = 0
+
+        if mode and num_peaks <= 15 and compliant_charge and compliant_mass: 
+            print("peaks {} not valid at line {}".format(num_peaks,start))
+            #print(lines[start-50:start+30])
     if mode: 
-        print("real counter {}".format(real_counter))
-        return counter
+        print("Num all spectra in file {}".format(real_counter))
+        return len(pointers)
     return pointers
 def get_valid_spectra_folder(intersect_range,mgf_files):
     counter = 0
@@ -130,6 +142,7 @@ def write_new_mgf_file(mgf_out,min_spectra,intersect_range,mgf_file):
     #pointers = generate_pointers(mgf_file,intersect_range)
     pointers = get_valid_spectra(intersect_range,mgf_file,False)
     print("num valid spectra: {}".format(len(pointers)))
+    print("range: ",find_range_file(mgf_file))
 
     f = open(mgf_file,"r")
     lines = f.readlines()
@@ -145,9 +158,19 @@ def write_new_mgf_file(mgf_out,min_spectra,intersect_range,mgf_file):
     print("len random pointers: {} == min spectra: {}".format(len(random_pointers),min_spectra))
     for p in random_pointers:
         line_pointer = p
+        num_peaks = 0
+        if not lines[line_pointer].startswith("BEGIN IONS"):
+            print("not begin ions in line {}".format(line_pointer))
         while not lines[line_pointer].startswith('END IONS'):
+            if isfloat(re.split(' |\t|=', lines[line_pointer])[0]): num_peaks += 1
             f.write(lines[line_pointer])
             line_pointer += 1
+        
+        if num_peaks <= 15:
+            print("num peaks in write func: {}".format(num_peaks))
+            print("p: {}".format(p))
+            
+            print(lines[p:line_pointer+1])
         f.write(lines[line_pointer])
         f.write('\n')
     f.close()
@@ -179,7 +202,7 @@ def generate_pointers(mgf_file,intersect_range):
         if line.startswith('BEGIN IONS'):
             start = i-1 #the pointer moved to the next line already.
         if line.startswith('PEPMASS'):
-            mass = float(re.findall(r"PEPMASS=([-+]?[0-9]*\.?[0-9]*)", line)[0])
+            mass = round(float(re.findall(r"PEPMASS=([-+]?[0-9]*\.?[0-9]*)", line)[0]),3)
             if mass >= intersect_range[0] and mass <= intersect_range[1]:  
                 compliant_mass = True
             else: compliant_mass = False
@@ -218,10 +241,10 @@ if __name__ == '__main__':
     mgf_files = get_mgffiles(dirs,mgf_dir)
 
     #TEST
-    #mgf_files = [mgf_files[270],mgf_files[271],mgf_files[272]]
+    mgf_files = [mgf_files[2]]
 
     print('reading {} files'.format(len(mgf_files)))
-    intersect_range = [500.278289794922, 1346.155029296875] #[500.278289794922, 1346.155029296875] #[500.278289794922, 1346.155029296875] # or None if we dont know the range. Calculated 3/11/2022
+    intersect_range = [500278, 1346155] #[500.278289794922, 1346.155029296875] #[500.278289794922, 1346.155029296875] # or None if we dont know the range. Calculated 3/11/2022
     if not intersect_range:
         intersect_range = find_overlapping_range(mgf_files)
         f = open(join(mgf_out,"range.txt"),"w")
